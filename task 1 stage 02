@@ -1,0 +1,389 @@
+Differential Expression Analysis of Arabidopsis thaliana Leaf Vasculature in Response to UV Stress
+
+This project involves analyzing the differential gene expression in the vasculature of Arabidopsis thaliana leaf tissues treated with UV-C stress compared to a control (water-treated) group. The goal is to identify genes that respond to UV stress and the enriched pathways in the UV-C treated group.
+
+Project Structure
+Step-by-Step Guide
+1. Environment Setup
+
+Before starting the project, make sure to create a virtual environment for Python and R dependencies to ensure that all required libraries are installed.
+
+2. Data Preprocessing
+Step 1: Download FASTQ Files
+
+We will begin by downloading the FASTQ files, performing quality control (QC) on the raw data, and trimming the reads for adapter removal and low-quality bases.
+
+Control Group:
+
+SRR12808527
+
+SRR12808528
+
+SRR12808529
+
+UV-C Treated Group:
+
+SRR12808497
+
+SRR12808498
+
+SRR12808499
+
+# Create directory for clean reads
+mkdir clean_reads
+
+# Download FASTQ files using wget
+wget -P clean_data ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR128/027/SRR12808527/SRR12808527.fastq.gz
+wget -P clean_data ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR128/029/SRR12808529/SRR12808529.fastq.gz
+wget -P clean_data ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR128/097/SRR12808497/SRR12808497.fastq.gz
+wget -P clean_data ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR128/098/SRR12808498/SRR12808498.fastq.gz
+wget -P clean_data ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR128/099/SRR12808499/SRR12808499.fastq.gz
+wget -P clean_data ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR128/028/SRR12808528/SRR12808528.fastq.gz
+
+3. Quality Control with FastQC and MultiQC
+Run FastQC on Raw Data
+# Create a directory for QC results
+mkdir -p qc/raw
+
+# Run FastQC on all downloaded FASTQ files
+fastqc -o qc/raw clean_reads/*.fastq.gz
+
+Run MultiQC to Aggregate Results
+# Run MultiQC on FastQC results
+multiqc -o qc/multiqc qc/raw qc/trimmed
+
+4. Trimming the Reads with Fastp
+
+After checking the quality, we will trim the reads using fastp to remove adapters and low-quality bases.
+
+# Create directory for trimmed files
+mkdir -p trim
+
+# Loop through all .fastq.gz files in clean_data/
+for filename in clean_data/*.fastq.gz; do
+    base=$(basename "$filename" .fastq.gz)
+    fastp -i "$filename" -o "trim/${base}_trim.fastq.gz" -h "trim/${base}_report.html"
+done
+
+5. Quality Control of Trimmed Reads
+
+After trimming, we'll run FastQC again on the trimmed reads to check the quality.
+
+# Create a directory for trimmed QC results
+mkdir -p qc/trimmed
+
+# Run FastQC on the trimmed reads
+fastqc -o qc/trimmed trimmed/*.fastq.gz
+
+6. Download Reference Genome for RNA-Seq Alignment
+
+We'll download the Arabidopsis thaliana reference genome and GTF file, then align the trimmed reads to the genome using STAR.
+
+Step 1: Download the Reference Genome and Annotations
+# Create directory for genome files
+mkdir genome
+
+# Download the Arabidopsis thaliana reference genome and GTF file
+wget https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-62/fasta/arabidopsis_thaliana/dna/Arabidopsis_thaliana.TAIR10.dna.toplevel.fa.gz
+gunzip Arabidopsis_thaliana.TAIR10.dna.toplevel.fa.gz
+mv Arabidopsis_thaliana.TAIR10.dna.toplevel.fa a_thaliana.fa
+
+# Create genome index directory
+mkdir -p genomeIndex
+
+# Build STAR genome index
+STAR --runMode genomeGenerate --genomeDir genomeIndex --genomeFastaFiles genome/a_thaliana.fa
+
+# Download annotated genome (GFF3 format)
+wget https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-62/gff3/arabidopsis_thaliana/Arabidopsis_thaliana.TAIR10.62.gff3.gz
+gunzip Arabidopsis_thaliana.TAIR10.62.gff3.gz
+mv Arabidopsis_thaliana.TAIR10.62.gff3 a_thaliana.gff3
+
+7. Align the Trimmed Reads Using STAR
+
+We'll now align the trimmed reads to the reference genome using STAR.
+
+# Create directory for mapped files
+mkdir -p mapped
+
+# Align each trimmed FASTQ file using STAR
+for infile in trimmed/*.fastq.gz; do
+    outfile=$(basename "$infile" .fastq.gz)
+    STAR --genomeDir genomeIndex --readFilesIn "$infile" --outFileNamePrefix mapped/$outfile --outSAMtype BAM SortedByCoordinate --outSAMattributes All
+done
+
+8. Counting Mapped Reads with featureCounts
+
+Next, we'll count the mapped reads using featureCounts.
+
+# Create output directory for counts
+mkdir -p counts
+
+# Run featureCounts
+featureCounts -O -t gene -g ID -a a_thaliana.gff3 -o counts/counts.txt mapped/*_Aligned.sortedByCoord.out.bam
+
+# Check the summary of counts
+cat counts/counts.txt.summary
+
+9. Differential Expression Analysis with DESeq2
+Step 1: Set Working Directory
+
+Set the working directory in R where your files are located:
+
+setwd("/path/to/your/directory")  # Adjust to your working directory
+
+Step 2: Load Necessary Libraries
+
+Make sure you have the required R libraries installed:
+
+library(DESeq2)        # For differential expression analysis
+library(pheatmap)      # For heatmap visualizations
+library(dplyr)         # For data manipulation
+library(ggplot2)       # For plotting
+library(clusterProfiler)  # For enrichment analysis
+library(org.At.tair.db)   # For Arabidopsis ID mapping
+
+Step 3: Read the Data
+
+Read the count data and metadata files.
+
+counts <- read.delim("counts.txt", header = TRUE, comment.char = "#")
+meta   <- read.csv("metadata.csv", header = TRUE, stringsAsFactors = TRUE)
+
+Step 4: Prepare Count Matrix
+
+Ensure you have the correct columns for your metadata.
+
+raw_counts <- counts[, c(1, 7:12)]  # Adjust columns according to your metadata
+rownames(raw_counts) <- counts$Geneid  # Add gene IDs as rownames
+raw_counts <- raw_counts[, -1]
+
+Step 5: Create DESeq2 Dataset
+meta$condition <- factor(meta$condition, levels = c("control", "treated"))
+dds <- DESeqDataSetFromMatrix(countData = raw_counts, colData = meta, design = ~ condition)
+
+# Relevel condition factor (control as reference)
+dds$condition <- relevel(dds$condition, ref = "control")
+
+Step 6: Perform Differential Expression Analysis
+dds <- DESeq(dds)
+res <- results(dds)
+summary(res)
+
+Step 7: Volcano Plot
+plot(res$log2FoldChange, -log10(res$padj),
+     pch = 19, cex = 0.4,
+     col = "grey",
+     xlab = "Log2 Fold Change (UV-C Treated vs Control)",
+     ylab = "-log10 Adjusted P-value",
+     main = "Volcano Plot")
+abline(v = c(-1, 1), lty = 2, col = "blue")
+abline(h = -log10(0.05), lty = 2, col = "red")
+
+Step 8: Heatmap of Differentially Expressed Genes
+up   <- subset(res, padj < 0.05 & log2FoldChange > 1)
+down <- subset(res, padj < 0.05 & log2FoldChange < -1)
+de_genes <- c(rownames(up), rownames(down))
+
+if (length(de_genes) > 2) {
+  pheatmap(raw_counts[de_genes, ],
+           scale = "row",
+           show_rownames = FALSE,
+           clustering_distance_rows = "euclidean",
+           clustering_distance_cols = "euclidean",
+           main = "DE Genes (scaled)")
+}
+
+10. Top 100 Differentially Expressed Genes
+res_filtered <- res %>%
+  as.data.frame() %>%
+  filter(!is.na(padj)) %>%
+  filter(abs(log2FoldChange) > 2.5, padj < 0.05)
+
+top100 <- res_filtered %>%
+  arrange(padj) %>%
+  head(100)
+head(top100)
+
+11. Enrichment Analysis (GO and KEGG)
+Map Gene IDs to Entrez IDs and Perform GO Enrichment
+entrez <- mapIds(org.At.tair.db,
+                 keys = gsub("gene:", "", rownames(top100)), 
+                 column = "ENTREZID",
+                 keytype = "TAIR",
+                 multiVals = "first")
+
+ego_bp <- enrichGO(gene = entrez,
+                   OrgDb = org.At.tair.db,
+                   keyType = "ENTREZID",
+                   ont = "BP", 
+                   pvalueCutoff = 0.05)
+
+dotplot(ego_bp, showCategory = 20) +
+  ggtitle("GO Enrichment: Biological Process")
+
+KEGG Pathway Enrichment
+kegg_res <- enrichKEGG(gene = rownames(top100), organism = "ath", keyType = "kegg")
+
+dotplot(kegg_res, showCategory = 20) +
+  ggtitle("KEGG Pathway Enrichment")
+
+12. Save Results to CSV
+write.csv(res, "all_results.csv")
+write.csv(up, "upregulated.csv")
+write.csv(down, "downregulated.csv")
+write.csv(top100, "top100_DE_genes.csv")
+write.csv(kegg_res@result, "kegg_enrichment.csv")
+
+Results and Discussion
+#1. volcano plot
+#The volcano plot illustrates the global transcriptional changes in response to UV-C treatment. A large number of genes were significantly differentially expressed, with a clear asymmetry between upregulated and downregulated genes. Specifically, the majority of significant DEGs were upregulated (red points), indicating that UV-C exposure predominantly triggered transcriptional activation rather than repression.
+The distribution shows that many upregulated genes had both high fold changes (log₂FC > 5) and strong statistical significance (–log₁₀ adjusted p-value > 50), suggesting robust induction of stress-response pathways. By contrast, fewer downregulated genes (blue points) were detected, and these generally exhibited smaller fold changes in expression.
+This pattern implies that UV-C irradiation initiates a broad transcriptional response characterized by the activation of DNA damage repair mechanisms, stress-response signaling cascades, and potentially apoptosis-related genes, while downregulation was comparatively limited.
+#2.heatmap
+This heatmap confirms that UV-C treatment has a strong global impact on gene expression.
+UV-C treated samples cluster tightly, showing reproducibility of the transcriptional response.
+The predominant upregulation suggests activation of stress-response pathways (e.g., DNA damage repair, apoptosis, defense responses).
+The smaller set of downregulated genes may represent pathways that are suppressed under UV-C stress (e.g., normal growth or metabolic processes).
+#3.Interpretation of the Top DEGs and GO Enrichment
+The heatmap displays the 50 most significantly differentially expressed genes across control (blue) and UV-C–treated (red) samples.
+All three replicates of UV-C treatment cluster tightly together, separate from the controls, confirming consistent transcriptional reprogramming.
+The top DEGs are almost universally upregulated in UV-C samples (red blocks), while showing low baseline expression in controls (blue blocks).
+This reinforces the volcano plot finding: UV-C irradiation mainly drives gene induction rather than repression.
+Gene Ontology (GO) enrichment analysis (Table 1)
+Biological Process (BP):
+Enriched terms such as response to hypoxia, response to oxidative stress, response to reactive oxygen species, and regulation of defense response suggest that UV-C causes oxidative stress and oxygen imbalance, likely through reactive oxygen species (ROS) generation.
+Processes like response to wounding and response to jasmonic acid reflect DNA damage signaling and hormone-mediated defense activation, hallmarks of stress responses.
+Cellular Component (CC):
+
+Enrichment in cytoplasmic stress granules, ribonucleoprotein granules, and the apoplast indicates structural rearrangements that stabilize RNAs and proteins during stress.
+This suggests cells are actively reprogramming and protecting translation machinery under UV-C stress.
+Molecular Function (MF):
+
+Enrichment of ATPase-coupled transmembrane transporter activity, glutathione transferase activity, and ABC-type xenobiotic transporter activity highlights the role of detoxification and antioxidant defense.
+These genes facilitate ROS scavenging, glutathione-based neutralization, and ATP-dependent export of toxic byproducts.
+Biological Meaning
+
+Together, the DEGs and enriched GO terms show that UV-C exposure provokes a coordinated stress response.
+Cells activate ROS detoxification, hypoxia signaling, and hormone-regulated defense pathways, while reorganizing the transcriptome to repair damage and maintain redox balance.
+This matches the phenotypic expectation of UV-induced stress: DNA damage, oxidative stress, and activation of defense networks.
+
+Table: Top GO Enrichment Terms for DEGs After UV-C Treatment
+Biological Process (BP)	Count
+Response to hypoxia	17
+Response to decreased oxygen levels	17
+Response to oxygen levels	17
+Response to oxidative stress	16
+Cellular response to hypoxia	15
+Cellular response to decreased oxygen levels	15
+Cellular response to oxygen levels	15
+Response to wounding	15
+Response to water deprivation	13
+Response to water	13
+Response to fungus	12
+Response to jasmonic acid	10
+Regulation of defense response	10
+Response to fatty acid	10
+Response to reactive oxygen species	8
+Indole-containing compound metabolic process	8
+Toxin metabolic process	7
+Camalexin biosynthetic process	4
+Camalexin metabolic process	4
+Toxin biosynthetic process	4
+Cellular Component (CC)	Count
+Apoplast	6
+Supramolecular complex	6
+Cytoplasmic stress granule	5
+Cytoplasmic ribonucleoprotein granule	5
+Ribonucleoprotein granule	5
+Molecular Function (MF)	Count
+ATP hydrolysis activity	9
+ATPase-coupled transmembrane transporter activity	6
+Primary active transmembrane transporter activity	6
+Peptide binding	5
+Amide binding	5
+Xenobiotic transmembrane transporter activity	4
+Glutathione transferase activity	4
+Quercetin 7-O-glucosyltransferase activity	4
+Quercetin 3-O-glucosyltransferase activity	4
+ABC-type transporter activity	4
+Dioxygenase activity	4
+Glutathione binding	3
+Oligopeptide binding	3
+Modified amino acid binding	3
+Sulfur compound binding	3
+Transaminase activity	3
+ABC-type xenobiotic transporter activity	3
+Daphnetin 3-O-glucosyltransferase activity	2
+Myricetin 3-O-glucosyltransferase activity	2
+Flavonol 3-O-glucosyltransferase activity	2
+#4 Interpretation of KEGG Pathway Enrichment
+The KEGG analysis confirmed that UV-C treatment induces strong stress-responsive pathways in Arabidopsis thaliana.
+
+The top enriched pathways included:
+
+Plant–pathogen interaction — highlighting activation of immune defense signaling cascades.
+Plant hormone signal transduction — showing the involvement of hormonal regulators (jasmonic acid, salicylic acid, ABA) in mediating stress adaptation.
+Glutathione metabolism — reflecting antioxidant defense and redox balance in response to ROS generated by UV-C.
+Biosynthesis of amino acids — supporting metabolic reprogramming to supply precursors for protective metabolites.
+Glycine, serine, and threonine metabolism — linking to one-carbon metabolism and precursors for stress-related biomolecules.
+Together, these pathways indicate a dual strategy:
+
+Stress defense: immune signaling, hormone-mediated adaptation, and antioxidant detoxification.
+Metabolic adjustment: amino acid biosynthesis and secondary metabolite precursors for protection and repair.
+Top 5 KEGG Pathways Summary:
+1. Organismal Systems: Environmental Adaptation
+
+Pathway ID: ath04626
+
+Pathway Description: Plant–pathogen interaction (Arabidopsis thaliana)
+
+This pathway describes the interactions between Arabidopsis thaliana and plant pathogens. It includes the molecular mechanisms through which plants defend themselves against pathogen attacks, involving both physical and chemical defenses.
+
+2. Metabolism: Amino Acid Metabolism
+
+Pathway ID: ath00260
+
+Pathway Description: Glycine, serine, and threonine metabolism (Arabidopsis thaliana)
+
+This pathway involves the metabolism of glycine, serine, and threonine, which are essential amino acids involved in protein synthesis and various metabolic processes. In Arabidopsis, this pathway helps to regulate growth and respond to environmental stress.
+
+3. Metabolism: Global and Overview Maps
+
+Pathway ID: ath01230
+
+Pathway Description: Biosynthesis of amino acids (Arabidopsis thaliana)
+
+This pathway covers the biosynthesis of essential amino acids in Arabidopsis thaliana. Amino acids are crucial for protein production and other metabolic functions. The pathway highlights the various enzymes involved in the synthesis of amino acids from basic precursors.
+
+4. Environmental Information Processing: Signal Transduction
+
+Pathway ID: ath04075
+
+Pathway Description: Plant hormone signal transduction (Arabidopsis thaliana)
+
+This pathway is involved in the signal transduction mechanisms of plant hormones such as auxins, cytokinins, and gibberellins. It plays a key role in regulating growth, development, and responses to environmental stimuli in Arabidopsis thaliana.
+
+5. Metabolism: Metabolism of Other Amino Acids
+
+Pathway ID: ath00480
+
+Pathway Description: Glutathione metabolism (Arabidopsis thaliana)
+
+Glutathione metabolism is an important antioxidant defense mechanism in Arabidopsis thaliana. This pathway is involved in the synthesis, regulation, and recycling of glutathione, a tripeptide that plays a central role in maintaining cellular redox balance and protecting against oxidative stress.
+
+Summary of Pathways:
+
+Plant–pathogen interaction (ath04626) – Organismal Systems: Describes the plant's immune response to pathogens.
+
+Glycine, serine, and threonine metabolism (ath00260) – Metabolism: Covers amino acid metabolism.
+
+Biosynthesis of amino acids (ath01230) – Metabolism: Involves the biosynthesis of amino acids.
+
+Plant hormone signal transduction (ath04075) – Environmental Information Processing: Regulates plant growth via hormones.
+
+Glutathione metabolism (ath00480) – Metabolism: Involves antioxidant defense mechanisms.
+#============================================================
+links 
+1. LinkedIn:https://www.linkedin.com/posts/habiba-faried-a62bb11b0_hackbio-bash-linux-activity-7366582020027703296-s0Vk?utm_source=share&utm_medium=member_android&rcm=ACoAADFMi6oBwjx2cbYE0OvQ1vQcA7FnBUzmvb
+2.github:https://github.com/habibafaried/hackbio-bash-script-habiba/blob/main/plant%20rnaseq
