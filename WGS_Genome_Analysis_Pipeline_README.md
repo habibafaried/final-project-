@@ -176,6 +176,34 @@ vep -i ~/habiba/humantask/VCF/patientX.g.vcf.gz --cache --dir_cache /path/to/vep
 
 Or, upload your final VCF to Variant Effect Predictor: https://www.ensembl.org/Multi/Tools/VEP?db=core
 
+#Explanation:
+#vep: Variant Effect Predictor annotates the VCF file by providing details about the functional consequences of each variant.
+#Output: Annotated VCF file (patientX_annotated.vcf).
+# or Your final VCF can  be uploaded to Variant Effect Predictor: https://www.ensembl.org/Multi/Tools/VEP?db=core
+# searched for different genes 
+#1. rs34126315
+#Gene: HBB (Hemoglobin subunit beta)
+#Chromosome: 11
+#Location: chr11:5,225,469 (hg38)
+#Mutation: A → T (in the 6th codon)
+#Amino Acid Change: Glu6Val (Glutamic acid to Valine)
+#Clinical Significance: This is the canonical sickle cell mutation (also known as HbS). This mutation causes the red blood cells to become sickle-shaped, leading to sickle cell disease. It is a pathogenic variant.
+#2. rs34135787
+#Gene: HBB (Hemoglobin subunit beta)
+#Chromosome: 11
+#Location: chr11:5,225,531 (hg38)
+#Mutation: C → T (in the 6th codon)
+#Amino Acid Change: Glu6Lys (Glutamic acid to Lysine)
+#Clinical Significance: This mutation is another form of the sickle cell mutation, where the mutation causes HbS formation, leading to sickle cell disease. This is also a pathogenic variant.
+#rs33941849 - Key Information
+#Gene: HBB (Hemoglobin subunit beta)
+#Chromosome: 11
+#Location: chr11:5,225,518 (hg38)
+#Mutation: A → T
+#Amino Acid Change: Glu6Val (Glutamic acid to Valine)
+#Clinical Significance: This variant is also known as HbS and is associated with sickle cell disease (SCD). This mutation causes a glutamic acid to valine substitution at position 6 of the hemoglobin beta chain, leading to sickle-shaped red blood cells and reduced oxygen transport.
+#=====================================================================
+
 ## **Links**
 
 - **GitHub**: [GitHub Link](https://github.com/habibafaried/hackbio-bash-script-habiba/blob/main/human%20task%20hackbio%20stage%201)
